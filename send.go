@@ -1160,7 +1160,6 @@ func (cli *Client) getMessageContent(
 
 	if buttonType := getButtonTypeFromMessage(message); buttonType != "" {
 		if buttonType == "interactive" {
-			toJID, _ := msgAttrs["to"].(types.JID)
 			interactiveNodes := []waBinary.Node{
 				{
 					Tag: "native_flow",
