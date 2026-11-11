@@ -984,6 +984,17 @@ func getMediaTypeFromMessage(msg *waE2E.Message) string {
 		return "product"
 	case msg.InteractiveResponseMessage != nil:
 		return "native_flow_response"
+	case msg.InteractiveMessage != nil:
+		if hdr := msg.InteractiveMessage.GetHeader(); hdr != nil {
+			if hdr.GetImageMessage() != nil {
+				return "image"
+			} else if hdr.GetDocumentMessage() != nil {
+				return "document"
+			} else if hdr.GetVideoMessage() != nil {
+				return "video"
+			}
+		}
+		return ""
 	default:
 		return ""
 	}
@@ -995,6 +1006,8 @@ func getButtonTypeFromMessage(msg *waE2E.Message) string {
 		return getButtonTypeFromMessage(msg.ViewOnceMessage.Message)
 	case msg.ViewOnceMessageV2 != nil:
 		return getButtonTypeFromMessage(msg.ViewOnceMessageV2.Message)
+	case msg.ViewOnceMessageV2Extension != nil:
+		return getButtonTypeFromMessage(msg.ViewOnceMessageV2Extension.Message)
 	case msg.EphemeralMessage != nil:
 		return getButtonTypeFromMessage(msg.EphemeralMessage.Message)
 	case msg.ButtonsMessage != nil:
@@ -1007,6 +1020,8 @@ func getButtonTypeFromMessage(msg *waE2E.Message) string {
 		return "list_response"
 	case msg.InteractiveResponseMessage != nil:
 		return "interactive_response"
+	case msg.InteractiveMessage != nil:
+		return "interactive"
 	default:
 		return ""
 	}
@@ -1018,6 +1033,8 @@ func getButtonAttributes(msg *waE2E.Message) waBinary.Attrs {
 		return getButtonAttributes(msg.ViewOnceMessage.Message)
 	case msg.ViewOnceMessageV2 != nil:
 		return getButtonAttributes(msg.ViewOnceMessageV2.Message)
+	case msg.ViewOnceMessageV2Extension != nil:
+		return getButtonAttributes(msg.ViewOnceMessageV2Extension.Message)
 	case msg.EphemeralMessage != nil:
 		return getButtonAttributes(msg.EphemeralMessage.Message)
 	case msg.TemplateMessage != nil:
@@ -1151,13 +1168,48 @@ func (cli *Client) getMessageContent(
 	}
 
 	if buttonType := getButtonTypeFromMessage(message); buttonType != "" {
-		content = append(content, waBinary.Node{
-			Tag: "biz",
-			Content: []waBinary.Node{{
-				Tag:   buttonType,
-				Attrs: getButtonAttributes(message),
-			}},
-		})
+		if buttonType == "interactive" {
+			toJID, _ := msgAttrs["to"].(types.JID)
+			interactiveNodes := []waBinary.Node{
+				{
+					Tag: "native_flow",
+					Attrs: waBinary.Attrs{
+						"name": "mixed",
+						"v":    "9",
+					},
+				},
+			}
+			bizContent := []waBinary.Node{
+				{
+					Tag: "interactive",
+					Attrs: waBinary.Attrs{
+						"type": "native_flow",
+						"v":    "1",
+					},
+					Content: interactiveNodes,
+				},
+			}
+			if toJID.Server != types.GroupServer {
+				bizContent = append(bizContent, waBinary.Node{
+					Tag: "bot",
+					Attrs: waBinary.Attrs{
+						"biz_bot": "1",
+					},
+				})
+			}
+			content = append(content, waBinary.Node{
+				Tag:     "biz",
+				Content: bizContent,
+			})
+		} else {
+			content = append(content, waBinary.Node{
+				Tag: "biz",
+				Content: []waBinary.Node{{
+					Tag:   buttonType,
+					Attrs: getButtonAttributes(message),
+				}},
+			})
+		}
 	}
 	return content
 }
@@ -1232,6 +1284,28 @@ func (cli *Client) prepareMessageNode(
 	}, allDevices, nil
 }
 
+func getMessageContextInfo(message *waE2E.Message) *waE2E.MessageContextInfo {
+	if message == nil {
+		return nil
+	}
+	if message.MessageContextInfo != nil {
+		return message.MessageContextInfo
+	}
+	if message.ViewOnceMessage != nil {
+		return getMessageContextInfo(message.ViewOnceMessage.Message)
+	}
+	if message.ViewOnceMessageV2 != nil {
+		return getMessageContextInfo(message.ViewOnceMessageV2.Message)
+	}
+	if message.ViewOnceMessageV2Extension != nil {
+		return getMessageContextInfo(message.ViewOnceMessageV2Extension.Message)
+	}
+	if message.EphemeralMessage != nil {
+		return getMessageContextInfo(message.EphemeralMessage.Message)
+	}
+	return nil
+}
+
 func marshalMessage(to types.JID, message *waE2E.Message) (plaintext, dsmPlaintext []byte, err error) {
 	if message == nil && to.Server == types.NewsletterServer {
 		return
@@ -1248,7 +1322,7 @@ func marshalMessage(to types.JID, message *waE2E.Message) (plaintext, dsmPlainte
 				DestinationJID: proto.String(to.String()),
 				Message:        message,
 			},
-			MessageContextInfo: message.MessageContextInfo,
+			MessageContextInfo: getMessageContextInfo(message),
 		})
 		if err != nil {
 			err = fmt.Errorf("failed to marshal message (for own devices): %w", err)
