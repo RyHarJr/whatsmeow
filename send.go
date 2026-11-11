@@ -925,6 +925,8 @@ func getTypeFromMessage(msg *waE2E.Message) string {
 		return "reaction"
 	case msg.PollCreationMessage != nil, msg.PollUpdateMessage != nil:
 		return "poll"
+	case msg.InteractiveMessage != nil:
+		return "text"
 	case getMediaTypeFromMessage(msg) != "":
 		return "media"
 	case msg.Conversation != nil, msg.ExtendedTextMessage != nil, msg.ProtocolMessage != nil:
@@ -984,17 +986,6 @@ func getMediaTypeFromMessage(msg *waE2E.Message) string {
 		return "product"
 	case msg.InteractiveResponseMessage != nil:
 		return "native_flow_response"
-	case msg.InteractiveMessage != nil:
-		if hdr := msg.InteractiveMessage.GetHeader(); hdr != nil {
-			if hdr.GetImageMessage() != nil {
-				return "image"
-			} else if hdr.GetDocumentMessage() != nil {
-				return "document"
-			} else if hdr.GetVideoMessage() != nil {
-				return "video"
-			}
-		}
-		return ""
 	default:
 		return ""
 	}
@@ -1179,28 +1170,27 @@ func (cli *Client) getMessageContent(
 					},
 				},
 			}
-			bizContent := []waBinary.Node{
-				{
-					Tag: "interactive",
-					Attrs: waBinary.Attrs{
-						"type": "native_flow",
-						"v":    "1",
+			content = append(content, waBinary.Node{
+				Tag: "biz",
+				Content: []waBinary.Node{
+					{
+						Tag: "interactive",
+						Attrs: waBinary.Attrs{
+							"type": "native_flow",
+							"v":    "1",
+						},
+						Content: interactiveNodes,
 					},
-					Content: interactiveNodes,
 				},
-			}
+			})
 			if toJID.Server != types.GroupServer {
-				bizContent = append(bizContent, waBinary.Node{
+				content = append(content, waBinary.Node{
 					Tag: "bot",
 					Attrs: waBinary.Attrs{
 						"biz_bot": "1",
 					},
 				})
 			}
-			content = append(content, waBinary.Node{
-				Tag:     "biz",
-				Content: bizContent,
-			})
 		} else {
 			content = append(content, waBinary.Node{
 				Tag: "biz",
