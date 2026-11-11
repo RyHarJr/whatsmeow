@@ -1183,14 +1183,6 @@ func (cli *Client) getMessageContent(
 					},
 				},
 			})
-			if toJID.Server != types.GroupServer {
-				content = append(content, waBinary.Node{
-					Tag: "bot",
-					Attrs: waBinary.Attrs{
-						"biz_bot": "1",
-					},
-				})
-			}
 		} else {
 			content = append(content, waBinary.Node{
 				Tag: "biz",
